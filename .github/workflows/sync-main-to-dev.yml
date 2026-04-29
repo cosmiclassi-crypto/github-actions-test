@@ -37,7 +37,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git fetch origin main
+          git fetch origin main dev
+
+          if git merge-base --is-ancestor origin/main origin/dev; then
+            echo "dev already contains all commits from main. Nothing to sync."
+            exit 0
+          fi
 
           if git ls-remote --exit-code origin sync/main-to-dev > /dev/null 2>&1; then
             extra_commits="$(git log origin/main..origin/sync/main-to-dev --oneline | wc -l | tr -d ' ')"
