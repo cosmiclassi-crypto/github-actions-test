@@ -30,11 +30,11 @@
 - Developer resolves the conflict on their feature branch before merging to `main`.
 
 ## Test Case 4
-**explain:** Verify workflow never auto-merges the sync PR.  
-**prerequisite:** Open sync PR exists with no conflicts (clean state).  
+**explain:** Verify sync PR is auto-merged when there are no conflicts.  
+**prerequisite:** Open sync PR exists in a clean (no conflict) state.  
 **setup:**
-- Push a commit to `main` to trigger the workflow.  
+- Push a commit to `main` that does not conflict with anything on `dev`.  
 **expectation:**
-- Workflow creates/updates the PR only.
-- No automatic merge is performed.
-- PR remains open for manual review and merge.
+- Workflow detects `mergeable_state=clean`.
+- Sync PR is automatically merged into `dev` with commit message `chore: auto-merge main into dev (no conflicts)`.
+- `dev` is immediately up to date with `main` without any manual steps.
