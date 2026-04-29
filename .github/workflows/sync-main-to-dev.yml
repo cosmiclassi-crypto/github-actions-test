@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 concurrency:
@@ -97,7 +97,11 @@ jobs:
           done
 
           if [ "$mergeable_state" != "dirty" ]; then
-            echo "PR #$pr_number is mergeable_state=$mergeable_state. No conflicts."
+            echo "PR #$pr_number is clean. Auto-merging sync PR."
+            gh pr merge "$pr_number" \
+              --repo "$REPO" \
+              --merge \
+              --subject "chore: auto-merge main into dev (no conflicts)"
             exit 0
           fi
 
