@@ -146,30 +146,31 @@ jobs:
             mentions="_No GitHub authors could be inferred automatically._"
           fi
 
-          comment_body="$(cat <<EOF
-⚠️ Sync check found merge conflicts between \`main\` and \`dev\`.
-
-**Conflicted files:**
-$files_block
-**Likely contributors to review:**
-$mentions
-
-**What to do next**
-1. Checkout this PR branch locally.
-2. Resolve the conflicted files listed above.
-3. Run tests/build and verify behavior.
-4. Push the conflict-resolution commit to this PR.
-5. Merge this PR after approval.
-
-**Notes**
-- Mentions are best-effort based on recent commits on both branches.
-- If you are not the owner, please reassign to the correct file owner.
-
-Goal: keep \`dev\` aligned with \`main\` without regressions.
-EOF
-)"
+          body_file="$(mktemp)"
+          {
+            echo "⚠️ Sync check found merge conflicts between \`main\` and \`dev\`."
+            echo ""
+            echo "**Conflicted files:**"
+            echo "$files_block"
+            echo "**Likely contributors to review:**"
+            echo "$mentions"
+            echo ""
+            echo "**What to do next**"
+            echo "1. Checkout this PR branch locally."
+            echo "2. Resolve the conflicted files listed above."
+            echo "3. Run tests/build and verify behavior."
+            echo "4. Push the conflict-resolution commit to this PR."
+            echo "5. Merge this PR after approval."
+            echo ""
+            echo "**Notes**"
+            echo "- Mentions are best-effort based on recent commits on both branches."
+            echo "- If you are not the owner, please reassign to the correct file owner."
+            echo ""
+            echo "Goal: keep \`dev\` aligned with \`main\` without regressions."
+          } > "$body_file"
 
           gh pr comment \
             --repo "$REPO" \
             "$pr_number" \
-            --body "$comment_body"
+            --body-file "$body_file"
+          rm -f "$body_file"
