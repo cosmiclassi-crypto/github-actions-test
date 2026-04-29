@@ -16,11 +16,16 @@ concurrency:
 
 jobs:
   ensure-sync-pr:
-    name: Ensure main -> dev PR exists
+    name: Ensure sync/main-to-dev PR exists
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
     steps:
-      - name: Create or update PR
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reset sync branch and create or update PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -29,10 +34,56 @@ jobs:
           set -euo pipefail
           [ -n "${GH_TOKEN:-}" ] || { echo "GH_TOKEN is empty"; exit 1; }
 
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+
+          if git ls-remote --exit-code origin sync/main-to-dev > /dev/null 2>&1; then
+            extra_commits="$(git log origin/main..origin/sync/main-to-dev --oneline | wc -l | tr -d ' ')"
+            if [ "$extra_commits" -gt 0 ]; then
+              echo "sync/main-to-dev has $extra_commits resolution commit(s). Attempting to merge new main commits into it."
+              git checkout -B sync/main-to-dev origin/sync/main-to-dev
+              if git merge origin/main --no-edit; then
+                git push origin sync/main-to-dev
+                echo "Updated sync/main-to-dev with latest main commits, resolution work preserved."
+              else
+                echo "Could not merge new main into resolution branch. Resetting sync/main-to-dev."
+                git merge --abort
+                git checkout -B sync/main-to-dev origin/main
+                git push origin sync/main-to-dev --force
+                echo "Reset sync/main-to-dev to origin/main."
+
+                reset_pr="$(gh pr list \
+                  --repo "$REPO" \
+                  --base dev \
+                  --head sync/main-to-dev \
+                  --state open \
+                  --json number \
+                  --jq '.[0].number // empty')"
+
+                if [ -n "$reset_pr" ]; then
+                  gh pr comment \
+                    --repo "$REPO" \
+                    "$reset_pr" \
+                    --body "⚠️ A new push to \`main\` introduced additional conflicts that could not be auto-merged into this resolution branch. The \`sync/main-to-dev\` branch has been reset to \`main\`. Any in-progress resolution work has been lost — please resolve conflicts again from scratch."
+                fi
+              fi
+            else
+              git checkout -B sync/main-to-dev origin/main
+              git push origin sync/main-to-dev --force
+              echo "Reset sync/main-to-dev to origin/main."
+            fi
+          else
+            git checkout -B sync/main-to-dev origin/main
+            git push origin sync/main-to-dev --force
+            echo "Created sync/main-to-dev from origin/main."
+          fi
+
           pr_number="$(gh pr list \
             --repo "$REPO" \
             --base dev \
-            --head main \
+            --head sync/main-to-dev \
             --state open \
             --json number \
             --jq '.[0].number // empty')"
@@ -41,7 +92,7 @@ jobs:
             gh pr create \
               --repo "$REPO" \
               --base dev \
-              --head main \
+              --head sync/main-to-dev \
               --title "chore: sync main into dev" \
               --body "Automated PR to keep \`dev\` up to date with \`main\`."
             echo "Created new sync PR."
@@ -77,13 +128,13 @@ jobs:
           pr_number="$(gh pr list \
             --repo "$REPO" \
             --base dev \
-            --head main \
+            --head sync/main-to-dev \
             --state open \
             --json number \
             --jq '.[0].number // empty')"
 
           if [ -z "$pr_number" ]; then
-            echo "No open main -> dev PR found. Nothing to triage."
+            echo "No open sync/main-to-dev -> dev PR found. Nothing to triage."
             exit 0
           fi
 
@@ -136,15 +187,10 @@ jobs:
             [ -z "$file" ] && continue
             files_block="${files_block}- \`$file\`"$'\n'
 
-            main_login="$(gh api \
-              "repos/$REPO/commits?sha=main&path=$file&per_page=1" \
-              --jq '.[0].author.login // empty' 2>/dev/null || true)"
-
             dev_login="$(gh api \
               "repos/$REPO/commits?sha=dev&path=$file&per_page=1" \
               --jq '.[0].author.login // empty' 2>/dev/null || true)"
 
-            if [ -n "$main_login" ]; then echo "$main_login" >> "$mention_file"; fi
             if [ -n "$dev_login" ]; then echo "$dev_login" >> "$mention_file"; fi
           done <<< "$conflict_files"
 
@@ -165,14 +211,14 @@ jobs:
             echo "$mentions"
             echo ""
             echo "**What to do next**"
-            echo "1. Checkout this PR branch locally."
+            echo "1. Checkout \`sync/main-to-dev\` branch locally."
             echo "2. Resolve the conflicted files listed above."
             echo "3. Run tests/build and verify behavior."
             echo "4. Push the conflict-resolution commit to this PR."
             echo "5. Merge this PR after approval."
             echo ""
             echo "**Notes**"
-            echo "- Mentions are best-effort based on recent commits on both branches."
+            echo "- Mentions are best-effort based on recent commits on \`dev\`."
             echo "- If you are not the owner, please reassign to the correct file owner."
             echo ""
             echo "Goal: keep \`dev\` aligned with \`main\` without regressions."
