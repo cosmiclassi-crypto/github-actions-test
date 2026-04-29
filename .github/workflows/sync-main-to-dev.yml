@@ -57,7 +57,9 @@ jobs:
 
   triage-conflicts:
     name: Triage merge conflicts
+    needs: ensure-sync-pr
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
     steps:
       - name: Checkout repository history
         uses: actions/checkout@v4
@@ -146,27 +148,27 @@ jobs:
           fi
 
           comment_body="$(cat <<EOF
-          ⚠️ Sync check found merge conflicts between \`main\` and \`dev\`.
+⚠️ Sync check found merge conflicts between \`main\` and \`dev\`.
 
-          **Conflicted files:**
-          $files_block
-          **Likely contributors to review:**
-          $mentions
+**Conflicted files:**
+$files_block
+**Likely contributors to review:**
+$mentions
 
-          **What to do next**
-          1. Checkout this PR branch locally.
-          2. Resolve the conflicted files listed above.
-          3. Run tests/build and verify behavior.
-          4. Push the conflict-resolution commit to this PR.
-          5. Merge this PR after approval.
+**What to do next**
+1. Checkout this PR branch locally.
+2. Resolve the conflicted files listed above.
+3. Run tests/build and verify behavior.
+4. Push the conflict-resolution commit to this PR.
+5. Merge this PR after approval.
 
-          **Notes**
-          - Mentions are best-effort based on recent commits on both branches.
-          - If you are not the owner, please reassign to the correct file owner.
+**Notes**
+- Mentions are best-effort based on recent commits on both branches.
+- If you are not the owner, please reassign to the correct file owner.
 
-          Goal: keep \`dev\` aligned with \`main\` without regressions.
-          EOF
-          )"
+Goal: keep \`dev\` aligned with \`main\` without regressions.
+EOF
+)"
 
           gh pr comment \
             --repo "$REPO" \
