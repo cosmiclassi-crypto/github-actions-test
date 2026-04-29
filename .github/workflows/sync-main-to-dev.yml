@@ -39,8 +39,8 @@ jobs:
 
           git fetch origin main dev
 
-          if git merge-base --is-ancestor origin/main origin/dev; then
-            echo "dev already contains all commits from main. Nothing to sync."
+          if [ -z "$(git diff origin/dev...origin/main)" ]; then
+            echo "dev already has all changes from main. Nothing to sync."
             exit 0
           fi
 
