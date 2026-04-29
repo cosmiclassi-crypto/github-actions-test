@@ -23,10 +23,12 @@ jobs:
     steps:
       - name: Create or update PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          [ -n "${GH_TOKEN:-}" ] || { echo "GH_TOKEN is empty"; exit 1; }
 
           pr_number="$(gh pr list \
             --repo "$REPO" \
@@ -64,10 +66,12 @@ jobs:
 
       - name: Detect conflicts and tag likely authors
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          [ -n "${GH_TOKEN:-}" ] || { echo "GH_TOKEN is empty"; exit 1; }
 
           pr_number="$(gh pr list \
             --repo "$REPO" \
