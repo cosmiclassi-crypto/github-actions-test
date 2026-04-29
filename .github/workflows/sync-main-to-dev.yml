@@ -19,6 +19,8 @@ jobs:
     name: Ensure sync/main-to-dev PR exists
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
+    outputs:
+      sync_needed: ${{ steps.check.outputs.sync_needed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,6 +28,7 @@ jobs:
           fetch-depth: 0
 
       - name: Reset sync branch and create or update PR
+        id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,8 +44,11 @@ jobs:
 
           if [ -z "$(git diff origin/dev...origin/main)" ]; then
             echo "dev already has all changes from main. Nothing to sync."
+            echo "sync_needed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          echo "sync_needed=true" >> "$GITHUB_OUTPUT"
 
           if git ls-remote --exit-code origin sync/main-to-dev > /dev/null 2>&1; then
             extra_commits="$(git log origin/main..origin/sync/main-to-dev --oneline | wc -l | tr -d ' ')"
@@ -114,7 +120,7 @@ jobs:
     name: Triage merge conflicts
     needs: ensure-sync-pr
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
+    if: (github.event_name == 'workflow_dispatch' || github.ref_name == 'main') && needs.ensure-sync-pr.outputs.sync_needed == 'true'
     steps:
       - name: Checkout repository history
         uses: actions/checkout@v4
