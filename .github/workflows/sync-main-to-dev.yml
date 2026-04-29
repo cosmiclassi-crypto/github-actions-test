@@ -147,7 +147,7 @@ jobs:
             sleep 5
           done
 
-          if [ "$mergeable_state" = "clean" ]; then
+          if [ "$mergeable_state" = "clean" ] || [ "$mergeable_state" = "unstable" ]; then
             echo "PR #$pr_number is clean. Auto-merging sync PR."
             gh pr merge "$pr_number" \
               --repo "$REPO" \
