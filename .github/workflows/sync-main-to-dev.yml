@@ -124,7 +124,7 @@ jobs:
 
           while IFS= read -r file; do
             [ -z "$file" ] && continue
-            files_block="${files_block}- \`$file\`\n"
+            files_block="${files_block}- \`$file\`"$'\n'
 
             main_login="$(gh api \
               "repos/$REPO/commits?sha=main&path=$file&per_page=1" \
@@ -146,14 +146,25 @@ jobs:
           fi
 
           comment_body="$(cat <<EOF
-          ⚠️ This automated sync PR has merge conflicts.
+          ⚠️ Sync check found merge conflicts between \`main\` and \`dev\`.
 
-          **Conflicted files**
+          **Conflicted files:**
           $files_block
-          **Likely contributors to review conflict resolution**
+          **Likely contributors to review:**
           $mentions
 
-          Please resolve conflicts in this PR so \`dev\` stays aligned with \`main\`.
+          **What to do next**
+          1. Checkout this PR branch locally.
+          2. Resolve the conflicted files listed above.
+          3. Run tests/build and verify behavior.
+          4. Push the conflict-resolution commit to this PR.
+          5. Merge this PR after approval.
+
+          **Notes**
+          - Mentions are best-effort based on recent commits on both branches.
+          - If you are not the owner, please reassign to the correct file owner.
+
+          Goal: keep \`dev\` aligned with \`main\` without regressions.
           EOF
           )"
 
