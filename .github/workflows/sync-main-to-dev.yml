@@ -11,6 +11,10 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: sync-main-dev-${{ github.repository }}
+  cancel-in-progress: true
+
 jobs:
   ensure-sync-pr:
     name: Ensure main -> dev PR exists
