@@ -1,0 +1,153 @@
+name: Sync main to dev
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ensure-sync-pr:
+    name: Ensure main -> dev PR exists
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
+    steps:
+      - name: Create or update PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_number="$(gh pr list \
+            --repo "$REPO" \
+            --base dev \
+            --head main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -z "$pr_number" ]; then
+            gh pr create \
+              --repo "$REPO" \
+              --base dev \
+              --head main \
+              --title "chore: sync main into dev" \
+              --body "Automated PR to keep \`dev\` up to date with \`main\`."
+            echo "Created new sync PR."
+          else
+            gh pr edit \
+              --repo "$REPO" \
+              "$pr_number" \
+              --title "chore: sync main into dev" \
+              --body "Automated PR to keep \`dev\` up to date with \`main\`."
+            echo "Updated existing sync PR #$pr_number."
+          fi
+
+  triage-conflicts:
+    name: Triage merge conflicts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect conflicts and tag likely authors
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_number="$(gh pr list \
+            --repo "$REPO" \
+            --base dev \
+            --head main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -z "$pr_number" ]; then
+            echo "No open main -> dev PR found. Nothing to triage."
+            exit 0
+          fi
+
+          mergeable_state=""
+          for _ in 1 2 3 4 5 6; do
+            mergeable_state="$(gh api "repos/$REPO/pulls/$pr_number" --jq '.mergeable_state // "unknown"')"
+            if [ "$mergeable_state" != "unknown" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$mergeable_state" != "dirty" ]; then
+            echo "PR #$pr_number is mergeable_state=$mergeable_state. No conflicts."
+            exit 0
+          fi
+
+          git fetch origin main dev
+          git checkout -B conflict-check origin/dev
+
+          if git merge --no-commit --no-ff origin/main; then
+            echo "GitHub reports dirty but local merge succeeded. Skipping conflict comment."
+            git merge --abort || true
+            exit 0
+          fi
+
+          conflict_files="$(git diff --name-only --diff-filter=U || true)"
+          git merge --abort || true
+
+          if [ -z "$conflict_files" ]; then
+            echo "No conflicted files found from local merge simulation."
+            exit 0
+          fi
+
+          mention_file="$(mktemp)"
+          files_block=""
+
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            files_block="${files_block}- \`$file\`\n"
+
+            main_login="$(gh api \
+              "repos/$REPO/commits?sha=main&path=$file&per_page=1" \
+              --jq '.[0].author.login // empty' 2>/dev/null || true)"
+
+            dev_login="$(gh api \
+              "repos/$REPO/commits?sha=dev&path=$file&per_page=1" \
+              --jq '.[0].author.login // empty' 2>/dev/null || true)"
+
+            if [ -n "$main_login" ]; then echo "$main_login" >> "$mention_file"; fi
+            if [ -n "$dev_login" ]; then echo "$dev_login" >> "$mention_file"; fi
+          done <<< "$conflict_files"
+
+          mentions="$(sort -u "$mention_file" | sed 's/^/@/' | tr '\n' ' ')"
+          rm -f "$mention_file"
+
+          if [ -z "$mentions" ]; then
+            mentions="_No GitHub authors could be inferred automatically._"
+          fi
+
+          comment_body="$(cat <<EOF
+          ⚠️ This automated sync PR has merge conflicts.
+
+          **Conflicted files**
+          $files_block
+          **Likely contributors to review conflict resolution**
+          $mentions
+
+          Please resolve conflicts in this PR so \`dev\` stays aligned with \`main\`.
+          EOF
+          )"
+
+          gh pr comment \
+            --repo "$REPO" \
+            "$pr_number" \
+            --body "$comment_body"
